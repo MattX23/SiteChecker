@@ -8,6 +8,11 @@ Built as an internal PoC for auditing [Blue Bay Travel](https://bluebaytravel.co
 
 ---
 
+## Screenshots
+
+<img width="970" height="921" alt="Screenshot 2026-03-11 at 13 40 16" src="https://github.com/user-attachments/assets/75b258fd-39af-4eda-8e94-bc64ad7730d3" />
+
+
 ## What it checks
 
 For every link found in a site's navigation:
