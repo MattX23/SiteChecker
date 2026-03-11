@@ -1,6 +1,6 @@
 # Site Checker
 
-A locally-run audit tool for travel websites. Crawls a site's navigation, validates every link, and checks each destination page for content completeness — hero image, tagline, and about section.
+A locally-run audit tool for BlueBayTravel's Nav Bar. Crawls a site's navigation, validates every link, and checks each destination page for content completeness — hero image, tagline, and about section.
 
 Built as an internal PoC for auditing [Blue Bay Travel](https://bluebaytravel.co.uk), [Tropical Warehouse](https://tropicalwarehouse.co.uk), and [Caribbean Warehouse](https://caribbeanwarehouse.co.uk).
 
@@ -15,7 +15,7 @@ Built as an internal PoC for auditing [Blue Bay Travel](https://bluebaytravel.co
 
 ## What it checks
 
-For every link found in a site's navigation:
+For every link found in the site's navigation:
 
 | Check | Pass | Warn | Fail |
 |---|---|---|---|
