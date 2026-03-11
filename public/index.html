@@ -377,14 +377,11 @@
       display: none;
       align-items: center;
       gap: 10px;
-      background: var(--white);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 12px 18px;
-      margin-bottom: 16px;
+      border-top: 1px solid var(--border);
+      padding: 12px 0 0 0;
+      margin-top: 14px;
       font-size: 13px;
       color: var(--muted);
-      box-shadow: var(--shadow-sm);
     }
     .checking-bar.visible { display: flex; }
     .checking-bar .spinner {
@@ -449,6 +446,12 @@
       <button class="quick-btn" onclick="setUrl('tropicalwarehouse.co.uk')">tropicalwarehouse.co.uk</button>
       <button class="quick-btn" onclick="setUrl('caribbeanwarehouse.co.uk')">caribbeanwarehouse.co.uk</button>
     </div>
+    <!-- Currently checking indicator -->
+    <div class="checking-bar" id="checking-bar">
+      <span class="spinner"></span>
+      <span>Checking: <span class="checking-name" id="checking-name">…</span></span>
+      <span class="checking-count" id="checking-count"></span>
+    </div>
   </div>
 
   <!-- Status log -->
@@ -488,13 +491,6 @@
     <button class="filter-btn" data-filter="nav" onclick="setFilter('nav', this)">Nav problems</button>
     <button class="filter-btn" data-filter="hero" onclick="setFilter('hero', this)">Hero problems</button>
     <button class="filter-btn" data-filter="about" onclick="setFilter('about', this)">About problems</button>
-  </div>
-
-  <!-- Currently checking indicator -->
-  <div class="checking-bar" id="checking-bar">
-    <span class="spinner"></span>
-    <span>Checking: <span class="checking-name" id="checking-name">…</span></span>
-    <span class="checking-count" id="checking-count"></span>
   </div>
 
   <!-- Results -->
