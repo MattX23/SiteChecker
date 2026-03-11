@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Site Checker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f7f6f3;
+      --white: #ffffff;
+      --border: #e4e2dc;
+      --border-strong: #ccc9c0;
+      --text: #1a1916;
+      --muted: #8a8780;
+      --accent: #2a6496;
+      --accent-light: #eaf2f8;
+      --ok: #2d7a4f;
+      --ok-bg: #edf7f2;
+      --ok-border: #b8e0cb;
+      --warn: #a05c00;
+      --warn-bg: #fef6ec;
+      --warn-border: #f5d49a;
+      --error: #b93030;
+      --error-bg: #fdf1f1;
+      --error-border: #f0b8b8;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow: 0 4px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.05);
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Figtree', sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      height: 56px;
+      gap: 12px;
+    }
+    .header-logo {
+      font-family: 'Instrument Serif', serif;
+      font-size: 20px;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+    .header-logo span { color: var(--accent); font-style: italic; }
+    .header-tag {
+      font-size: 11px;
+      font-family: 'DM Mono', monospace;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+
+    /* ── Search bar ── */
+    .search-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 32px;
+    }
+    .search-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+      display: block;
+    }
+    .search-hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .search-row {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .search-input {
+      flex: 1;
+      height: 44px;
+      border: 1.5px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 0 14px;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--white);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--muted); }
+    .btn {
+      height: 44px;
+      padding: 0 24px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Figtree', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: #1f4d72; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { background: var(--border-strong); cursor: not-allowed; transform: none; }
+
+    .quick-sites {
+      margin-top: 14px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .quick-btn {
+      font-size: 12px;
+      font-family: 'DM Mono', monospace;
+      color: var(--accent);
+      background: var(--accent-light);
+      border: 1px solid #c5ddf0;
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .quick-btn:hover { background: #d5e9f5; }
+
+    /* ── Status log ── */
+    .status-log {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-sm);
+      display: none;
+    }
+    .status-log.visible { display: block; }
+    .status-title {
+      font-size: 11px;
+      font-family: 'DM Mono', monospace;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    #log-lines { display: flex; flex-direction: column; gap: 4px; }
+    .log-line {
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .log-line.active { color: var(--text); }
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .log-tick { color: var(--ok); font-size: 13px; flex-shrink: 0; }
+
+    /* ── Summary bar ── */
+    .summary-bar {
+      display: none;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .summary-bar.visible { display: flex; }
+    .summary-pill {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      flex: 1;
+      min-width: 120px;
+      box-shadow: var(--shadow-sm);
+      text-align: center;
+    }
+    .pill-num {
+      font-family: 'Instrument Serif', serif;
+      font-size: 28px;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .pill-num.ok { color: var(--ok); }
+    .pill-num.warn { color: var(--warn); }
+    .pill-num.error { color: var(--error); }
+    .pill-label { font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: 0.03em; }
+
+    /* ── Filters ── */
+    .filter-bar {
+      display: none;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .filter-bar.visible { display: flex; }
+    .filter-btn {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--white);
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .filter-btn:hover { border-color: var(--border-strong); color: var(--text); }
+    .filter-btn.active { background: var(--text); color: var(--white); border-color: var(--text); }
+
+    /* ── Results ── */
+    #results { display: flex; flex-direction: column; gap: 8px; }
+
+    .result-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.15s;
+    }
+    .result-card:hover { box-shadow: var(--shadow); }
+
+    .result-card.is-ok { border-left: 3px solid var(--ok); }
+    .result-card.is-warn { border-left: 3px solid var(--warn); }
+    .result-card.is-error { border-left: 3px solid var(--error); }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      padding: 14px 18px;
+      gap: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .result-header:hover { background: #fafaf8; }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-ok { background: var(--ok); }
+    .dot-warn { background: var(--warn); }
+    .dot-error { background: var(--error); }
+
+    .result-name {
+      font-weight: 600;
+      font-size: 14px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .result-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-family: 'DM Mono', monospace;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .badge-ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+    .badge-warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
+    .badge-error { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
+    .badge-neutral { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+
+    .expand-icon {
+      color: var(--muted);
+      font-size: 12px;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .result-card.expanded .expand-icon { transform: rotate(180deg); }
+
+    .result-body {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 16px 18px;
+      background: #fafaf8;
+    }
+    .result-card.expanded .result-body { display: block; }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .detail-item {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .detail-label {
+      font-size: 10px;
+      font-family: 'DM Mono', monospace;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .detail-value {
+      font-size: 13px;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .detail-value.mono { font-family: 'DM Mono', monospace; font-size: 12px; }
+    .detail-value.ok { color: var(--ok); font-weight: 500; }
+    .detail-value.warn { color: var(--warn); font-weight: 500; }
+    .detail-value.error { color: var(--error); font-weight: 500; }
+    .detail-excerpt {
+      font-size: 12px;
+      color: var(--muted);
+      font-style: italic;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--muted);
+    }
+    .empty-icon { font-size: 32px; margin-bottom: 12px; }
+    .empty-title { font-family: 'Instrument Serif', serif; font-size: 20px; color: var(--text); margin-bottom: 6px; }
+
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-logo">Site<span>Checker</span></div>
+  <div class="header-tag">Blue Bay Travel PoC</div>
+</header>
+
+<div class="container">
+
+  <!-- Search -->
+  <div class="search-card">
+    <label class="search-label" for="url-input">Enter site URL to audit</label>
+    <p class="search-hint">Checks all nav links in <code>.cd-secondary-nav .nav-ul</code> — validates destination paths, hero taglines, and about section content.</p>
+    <div class="search-row">
+      <input
+              type="text"
+              id="url-input"
+              class="search-input"
+              placeholder="e.g. tropicalwarehouse.co.uk"
+              value=""
+              autocomplete="off"
+              spellcheck="false"
+      />
+      <button class="btn" id="run-btn" onclick="startCrawl()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Run Audit
+      </button>
+    </div>
+    <div class="quick-sites">
+      <span style="font-size:12px;color:var(--muted);align-self:center;">Quick:</span>
+      <button class="quick-btn" onclick="setUrl('bluebaytravel.co.uk')">bluebaytravel.co.uk</button>
+      <button class="quick-btn" onclick="setUrl('tropicalwarehouse.co.uk')">tropicalwarehouse.co.uk</button>
+      <button class="quick-btn" onclick="setUrl('caribbeanwarehouse.co.uk')">caribbeanwarehouse.co.uk</button>
+    </div>
+  </div>
+
+  <!-- Status log -->
+  <div class="status-log" id="status-log">
+    <div class="status-title">Progress</div>
+    <div id="log-lines"></div>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-bar" id="summary-bar">
+    <div class="summary-pill">
+      <div class="pill-num ok" id="sum-ok">–</div>
+      <div class="pill-label">Nav OK</div>
+    </div>
+    <div class="summary-pill">
+      <div class="pill-num error" id="sum-dead">–</div>
+      <div class="pill-label">Dead Links</div>
+    </div>
+    <div class="summary-pill">
+      <div class="pill-num warn" id="sum-wrongpath">–</div>
+      <div class="pill-label">Wrong Destination</div>
+    </div>
+    <div class="summary-pill">
+      <div class="pill-num warn" id="sum-hero">–</div>
+      <div class="pill-label">Hero Issues</div>
+    </div>
+    <div class="summary-pill">
+      <div class="pill-num warn" id="sum-about">–</div>
+      <div class="pill-label">About Issues</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-bar" id="filter-bar">
+    <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">All</button>
+    <button class="filter-btn" data-filter="issues" onclick="setFilter('issues', this)">Issues only</button>
+    <button class="filter-btn" data-filter="nav" onclick="setFilter('nav', this)">Nav problems</button>
+    <button class="filter-btn" data-filter="hero" onclick="setFilter('hero', this)">Hero problems</button>
+    <button class="filter-btn" data-filter="about" onclick="setFilter('about', this)">About problems</button>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">🔍</div>
+      <div class="empty-title">Ready to audit</div>
+      <p>Enter a site URL above and click Run Audit.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let allResults = [];
+  let currentFilter = 'all';
+
+  function setUrl(url) {
+    document.getElementById('url-input').value = url;
+    document.getElementById('url-input').focus();
+  }
+
+  function hasIssues(r) {
+    return r.navCheck !== 'ok' ||
+            (r.heroImage && r.heroImage.status !== 'ok') ||
+            (r.hero && r.hero.status !== 'ok') ||
+            (r.about && r.about.status !== 'ok');
+  }
+
+  function cardClass(r) {
+    if (!r.ok || r.navCheck === 'dead') return 'is-error';
+    if (r.navCheck !== 'ok' || (r.hero && r.hero.status !== 'ok') || (r.about && r.about.status !== 'ok')) return 'is-warn';
+    return 'is-ok';
+  }
+
+  function dotClass(r) {
+    const c = cardClass(r);
+    return c === 'is-error' ? 'dot-error' : c === 'is-warn' ? 'dot-warn' : 'dot-ok';
+  }
+
+  function navBadge(r) {
+    if (r.navCheck === 'ok') return `<span class="badge badge-ok">nav ✓</span>`;
+    if (r.navCheck === 'dead') return `<span class="badge badge-error">dead ${r.status || 'ERR'}</span>`;
+    if (r.navCheck === 'wrong_domain') return `<span class="badge badge-error">wrong domain</span>`;
+    if (r.navCheck === 'wrong_path') return `<span class="badge badge-warn">wrong path</span>`;
+    return '';
+  }
+
+  function heroImageBadge(r) {
+    if (!r.heroImage) return '';
+    if (r.heroImage.status === 'ok') return `<span class="badge badge-ok">image ✓</span>`;
+    return `<span class="badge badge-error">image missing</span>`;
+  }
+
+  function heroBadge(r) {
+    if (!r.hero) return '';
+    if (r.hero.status === 'ok') return `<span class="badge badge-ok">hero ✓</span>`;
+    if (r.hero.status === 'missing') return `<span class="badge badge-error">hero missing</span>`;
+    if (r.hero.status === 'empty') return `<span class="badge badge-error">hero empty</span>`;
+    if (r.hero.status === 'incomplete') return `<span class="badge badge-warn">hero incomplete</span>`;
+    return '';
+  }
+
+  function aboutBadge(r) {
+    if (!r.about) return '';
+    if (r.about.status === 'ok') return `<span class="badge badge-ok">about ✓</span>`;
+    if (r.about.status === 'missing') return `<span class="badge badge-error">about missing</span>`;
+    if (r.about.status === 'short') return `<span class="badge badge-warn">about short (${r.about.wordCount}w)</span>`;
+    return '';
+  }
+
+  function renderCard(r, index) {
+    const cc = cardClass(r);
+    const dc = dotClass(r);
+    return `
+      <div class="result-card ${cc}" id="card-${index}" data-issues="${hasIssues(r)}" data-nav="${r.navCheck !== 'ok'}" data-hero="${r.hero && r.hero.status !== 'ok'}" data-about="${r.about && r.about.status !== 'ok'}">
+        <div class="result-header" onclick="toggleCard(${index})">
+          <div class="status-dot ${dc}"></div>
+          <div class="result-name">${r.linkText || r.originalHref}</div>
+          <div class="result-badges">
+            ${navBadge(r)}
+            ${heroImageBadge(r)}
+            ${heroBadge(r)}
+            ${aboutBadge(r)}
+          </div>
+          <div class="expand-icon">▾</div>
+        </div>
+        <div class="result-body">
+          <div class="detail-grid">
+            <div class="detail-item">
+              <div class="detail-label">Original URL</div>
+              <div class="detail-value mono"><a href="${r.originalHref}" target="_blank" style="color:var(--accent)">${r.originalHref}</a></div>
+            </div>
+            ${r.redirected ? `
+            <div class="detail-item">
+              <div class="detail-label">Landed on</div>
+              <div class="detail-value mono ${r.navCheck === 'ok' ? 'ok' : 'warn'}"><a href="${r.finalUrl}" target="_blank" style="color:inherit">${r.finalUrl}</a></div>
+              ${r.navCheck !== 'ok' ? `<div class="detail-excerpt">Expected a /holidays/{country} path on the same domain</div>` : ''}
+            </div>` : r.navCheck !== 'ok' && r.navCheck !== 'dead' ? `
+            <div class="detail-item">
+              <div class="detail-label">Destination</div>
+              <div class="detail-value mono warn"><a href="${r.finalUrl}" target="_blank" style="color:inherit">${r.finalUrl}</a></div>
+              <div class="detail-excerpt">Expected a /holidays/{country} or /holidays/{country}/{region} path</div>
+            </div>` : ''}
+            ${r.heroImage ? `
+            <div class="detail-item">
+              <div class="detail-label">Hero image</div>
+              <div class="detail-value ${r.heroImage.status === 'ok' ? 'ok' : 'error'}">${r.heroImage.status === 'ok' ? 'Present' : 'Missing'}</div>
+              ${r.heroImage.src ? `<div class="detail-excerpt">${r.heroImage.src.split('/').pop()}</div>` : ''}
+            </div>` : ''}
+            ${r.hero ? `
+            <div class="detail-item">
+              <div class="detail-label">Hero tagline</div>
+              <div class="detail-value ${r.hero.status === 'ok' ? 'ok' : r.hero.status === 'incomplete' ? 'warn' : 'error'}">${r.hero.status === 'ok' ? 'Present' : r.hero.status === 'missing' ? 'Element not found' : r.hero.status === 'empty' ? 'Element empty' : r.hero.issue || 'Incomplete'}</div>
+              ${r.hero.text ? `<div class="detail-excerpt">"${r.hero.text.slice(0, 120)}${r.hero.text.length > 120 ? '…' : ''}"</div>` : ''}
+            </div>` : ''}
+            ${r.about ? `
+            <div class="detail-item">
+              <div class="detail-label">About section</div>
+              <div class="detail-value ${r.about.status === 'ok' ? 'ok' : r.about.status === 'short' ? 'warn' : 'error'}">
+                ${r.about.status === 'ok' ? `Present (${r.about.wordCount} words)` : r.about.status === 'missing' ? 'Section not found' : `Too short — ${r.about.wordCount} words (min 100)`}
+              </div>
+              ${r.about.text ? `<div class="detail-excerpt">"${r.about.text.slice(0, 140)}${r.about.text.length > 140 ? '…' : ''}"</div>` : ''}
+            </div>` : ''}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function toggleCard(index) {
+    const card = document.getElementById(`card-${index}`);
+    card.classList.toggle('expanded');
+  }
+
+  function setFilter(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilter();
+  }
+
+  function applyFilter() {
+    document.querySelectorAll('.result-card').forEach(card => {
+      let show = true;
+      if (currentFilter === 'issues') show = card.dataset.issues === 'true';
+      else if (currentFilter === 'nav') show = card.dataset.nav === 'true';
+      else if (currentFilter === 'hero') show = card.dataset.hero === 'true';
+      else if (currentFilter === 'about') show = card.dataset.about === 'true';
+      card.style.display = show ? '' : 'none';
+    });
+  }
+
+  function addLog(message, done = false) {
+    const log = document.getElementById('log-lines');
+    // Update last line if it has a spinner
+    const last = log.querySelector('.log-line:last-child');
+    if (last && last.querySelector('.spinner')) {
+      last.innerHTML = `<span class="log-tick">✓</span> ${last.dataset.msg}`;
+    }
+    if (message) {
+      const line = document.createElement('div');
+      line.className = 'log-line active';
+      line.dataset.msg = message;
+      line.innerHTML = done ? `<span class="log-tick">✓</span> ${message}` : `<span class="spinner"></span> ${message}`;
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    }
+  }
+
+  async function startCrawl() {
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) return;
+
+    // Reset
+    allResults = [];
+    document.getElementById('results').innerHTML = '';
+    document.getElementById('empty-state') && document.getElementById('results').appendChild(
+            Object.assign(document.createElement('div'), { id: 'empty-state' })
+    );
+    document.getElementById('log-lines').innerHTML = '';
+    document.getElementById('status-log').classList.add('visible');
+    document.getElementById('summary-bar').classList.remove('visible');
+    document.getElementById('filter-bar').classList.remove('visible');
+    document.getElementById('run-btn').disabled = true;
+    document.getElementById('results').innerHTML = '';
+
+    addLog(`Connecting to ${url}`);
+
+    const resp = await fetch('/api/crawl', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let event;
+        try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+        if (event.type === 'status') {
+          addLog(event.message);
+        } else if (event.type === 'progress') {
+          addLog(event.message);
+        } else if (event.type === 'result') {
+          const r = event.result;
+          allResults.push(r);
+          const index = allResults.length - 1;
+          const div = document.createElement('div');
+          div.innerHTML = renderCard(r, index);
+          document.getElementById('results').appendChild(div.firstElementChild);
+          // Auto-expand cards with issues
+          if (hasIssues(r)) {
+            document.getElementById(`card-${index}`).classList.add('expanded');
+          }
+          applyFilter();
+        } else if (event.type === 'error') {
+          addLog('Error: ' + event.message, true);
+        } else if (event.type === 'done') {
+          // Finalise log
+          const last = document.getElementById('log-lines').querySelector('.log-line:last-child');
+          if (last && last.querySelector('.spinner')) {
+            last.innerHTML = `<span class="log-tick">✓</span> ${last.dataset.msg}`;
+          }
+          // Summary
+          const s = event.summary;
+          document.getElementById('sum-ok').textContent = s.navOk;
+          document.getElementById('sum-dead').textContent = s.navDead;
+          document.getElementById('sum-wrongpath').textContent = s.navWrongPath;
+          document.getElementById('sum-hero').textContent = s.heroIssues;
+          document.getElementById('sum-about').textContent = s.aboutIssues;
+          document.getElementById('summary-bar').classList.add('visible');
+          document.getElementById('filter-bar').classList.add('visible');
+          document.getElementById('run-btn').disabled = false;
+          addLog(`Complete — ${s.total} links checked`, true);
+        }
+      }
+    }
+
+    document.getElementById('run-btn').disabled = false;
+  }
+
+  // Enter key
+  document.getElementById('url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startCrawl();
+  });
+</script>
+</body>
+</html>
