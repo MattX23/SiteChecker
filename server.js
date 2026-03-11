@@ -129,7 +129,20 @@ async function fetchWithPage(browser, url) {
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
     const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-    await new Promise(r => setTimeout(r, 2000));
+    // Wait for the hero tagline price to hydrate — it's fetched dynamically after page load.
+    // We wait up to 5s for a £ sign to appear in the hero heading before capturing HTML.
+    try {
+      await page.waitForFunction(
+          () => {
+            const el = document.querySelector('.hero-heading--beta');
+            return el && el.textContent.includes('£');
+          },
+          { timeout: 5000 }
+      );
+    } catch {
+      // Price didn't appear — capture anyway, checkPage will flag it as incomplete
+      await new Promise(r => setTimeout(r, 1000));
+    }
     const html = await page.content();
     const finalUrl = page.url();
     return { ok: true, status: response?.status() || 200, finalUrl, html };
@@ -342,9 +355,17 @@ app.post('/api/crawl', async (req, res) => {
         entry.navCheck = 'error';
       } else {
         const onHolidayPath = isHolidayPath(finalParsed.pathname);
-        // Flag if the final URL is not a valid holiday path — regardless of domain.
-        // A redirect to any homepage (own or sister site) means the destination is broken.
-        if (!onHolidayPath) {
+        const origParsed = (() => { try { return new URL(link.href); } catch { return null; } })();
+        const origPath = origParsed ? origParsed.pathname : null;
+        const origWasHoliday = origPath && isHolidayPath(origPath);
+
+        // Only flag wrong_path if:
+        //   - the original link was a holiday path that didn't land on a holiday path, OR
+        //   - it redirected to a homepage (any domain) — clear sign of a broken destination
+        const redirectedToHomepage = finalParsed.pathname === '/';
+        if (origWasHoliday && !onHolidayPath) {
+          entry.navCheck = 'wrong_path';
+        } else if (redirectedToHomepage) {
           entry.navCheck = 'wrong_path';
         } else {
           entry.navCheck = 'ok';

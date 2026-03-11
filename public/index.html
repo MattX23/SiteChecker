@@ -672,12 +672,13 @@
   }
 
   // Once a result card is rendered, convert its matching log line into a clickable link
-  function linkLogToCard(cardIndex, linkText) {
+  function linkLogToCard(cardIndex, r) {
     const log = document.getElementById('log-lines');
     const line = log.querySelector(`[data-card-index="${cardIndex}"]`);
     if (!line) return;
-    const label = linkText || `card-${cardIndex}`;
-    line.innerHTML = `<span class="log-tick">✓</span> <a class="log-link" href="#card-${cardIndex}" onclick="expandCard(${cardIndex})">${label}</a>`;
+    const label = r.linkText || r.originalHref || `card-${cardIndex}`;
+    const dc = dotClass(r);
+    line.innerHTML = `<span class="status-dot ${dc}" style="flex-shrink:0"></span> <a class="log-link" href="#card-${cardIndex}" onclick="expandCard(${cardIndex})">${label}</a>`;
   }
 
   async function startCrawl() {
@@ -748,7 +749,7 @@
           }
           applyFilter();
           // Make the log entry a clickable link to this card
-          linkLogToCard(index, r.linkText || r.originalHref);
+          linkLogToCard(index, r);
         } else if (event.type === 'error') {
           addLog('Error: ' + event.message, true);
         } else if (event.type === 'done') {
