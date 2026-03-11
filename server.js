@@ -146,10 +146,25 @@ async function fetchWithPage(browser, url) {
 //   - ends with a dangling preposition ("Explore holidays to", "Holidays in", etc.)
 function checkHeroText(text) {
   const clean = text.trim().replace(/\s+/g, ' ');
-  if (!clean.includes('£')) {
+
+  // "Explore holidays to {Destination}" is a valid complete pattern — not a truncation.
+  // e.g. "Explore holidays to South Africa" with no price is a data issue, not a broken string.
+  // Only flag as incomplete if it ends on a bare preposition with nothing after it.
+  const endsOnPrep = /\b(to|in|for|from|of|and|the|a|an)\s*$/i.test(clean);
+
+  // A well-formed tagline should have a price
+  const hasPrice = clean.includes('£');
+
+  // "Explore holidays to" exactly (nothing after "to") = definitely broken
+  const explorePattern = /^explore holidays to\s*$/i.test(clean);
+
+  if (explorePattern) {
+    return { status: 'incomplete', issue: 'Destination name is missing from tagline' };
+  }
+  if (!hasPrice) {
     return { status: 'incomplete', issue: 'No price found — tagline may be cut off' };
   }
-  if (/\b(to|in|for|from|of|and|the|a|an)\s*$/i.test(clean)) {
+  if (endsOnPrep) {
     return { status: 'incomplete', issue: `Tagline ends abruptly: "${clean}"` };
   }
   return { status: 'ok', issue: null };
