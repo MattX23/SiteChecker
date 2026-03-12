@@ -3,11 +3,32 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const puppeteer = require('puppeteer-core');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── Persistence ───────────────────────────────────────────────────────────────
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+
+function siteKey(url) {
+  try { return new URL(url).hostname.replace(/[^a-z0-9]/gi, '_'); }
+  catch { return 'unknown'; }
+}
+function saveResult(siteUrl, payload) {
+  const file = path.join(DATA_DIR, `${siteKey(siteUrl)}.json`);
+  fs.writeFileSync(file, JSON.stringify(payload, null, 2));
+}
+function loadResult(siteUrl) {
+  const file = path.join(DATA_DIR, `${siteKey(siteUrl)}.json`);
+  if (!fs.existsSync(file)) return null;
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { return null; }
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 const ABOUT_MIN_WORDS = 100;
 const TIMEOUT = 15000;
 
@@ -26,7 +47,6 @@ const SISTER_SITES = [
 ];
 
 async function findChrome() {
-  const fs = require('fs');
   for (const p of CHROME_PATHS) {
     if (fs.existsSync(p)) return p;
   }
@@ -43,6 +63,7 @@ const http = axios.create({
   },
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function normaliseUrl(input) {
   input = input.trim();
   if (!/^https?:\/\//i.test(input)) input = 'https://' + input;
@@ -50,7 +71,6 @@ function normaliseUrl(input) {
 }
 
 function stripTrailingQuery(url) {
-  // tropicalwarehouse/caribbeanwarehouse have bare trailing "?" on nav URLs
   return url.replace(/\?$/, '');
 }
 
@@ -58,18 +78,18 @@ function isHolidayPath(pathname) {
   return /^\/holidays\/[^/]+(\/[^/]+)?$/.test(pathname);
 }
 
+function isRegionPath(url) {
+  try {
+    const p = new URL(url).pathname;
+    return /^\/holidays\/[^/]+\/[^/]+/.test(p);
+  } catch { return false; }
+}
+
 function isSisterSite(hostname) {
   return SISTER_SITES.some(s => hostname === s || hostname.endsWith('.' + s));
 }
 
-// Extract nav links — handles both nav structures across the three sites
-//
-// Structure A (tropicalwarehouse, caribbeanwarehouse):
-//   .cd-secondary-nav .nav-ul a[href]   — URLs have trailing bare "?"
-//
-// Structure B (bluebaytravel):
-//   .cd-secondary-nav a.item--link      — clean relative URLs, no trailing "?"
-//
+// ── Nav extraction ────────────────────────────────────────────────────────────
 function extractNavLinks($, baseUrl) {
   const navLinks = [];
   const seen = new Set();
@@ -84,21 +104,18 @@ function extractNavLinks($, baseUrl) {
     } catch { /* skip invalid */ }
   }
 
-  // Try Structure A first: .nav-ul links (tropical/caribbean)
   const structureALinks = $('.cd-secondary-nav .nav-ul a[href]');
   if (structureALinks.length > 0) {
     structureALinks.each((_, el) => addLink($(el).attr('href'), $(el).text()));
     return { links: navLinks, structure: 'A' };
   }
 
-  // Fall back to Structure B: .item--link (bluebay)
   const structureBLinks = $('.cd-secondary-nav a.item--link[href]');
   if (structureBLinks.length > 0) {
     structureBLinks.each((_, el) => addLink($(el).attr('href'), $(el).text()));
     return { links: navLinks, structure: 'B' };
   }
 
-  // Last resort: any link inside .cd-secondary-nav that looks like a holiday path
   $('.cd-secondary-nav a[href]').each((_, el) => {
     const href = $(el).attr('href') || '';
     if (href.includes('/holidays/') || href.includes('/collections/')) {
@@ -108,6 +125,7 @@ function extractNavLinks($, baseUrl) {
   return { links: navLinks, structure: 'fallback' };
 }
 
+// ── Fetching ──────────────────────────────────────────────────────────────────
 async function fetchPage(url) {
   try {
     const resp = await http.get(url);
@@ -129,8 +147,6 @@ async function fetchWithPage(browser, url) {
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
     const response = await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-    // Wait for the hero tagline price to hydrate — it's fetched dynamically after page load.
-    // We wait up to 5s for a £ sign to appear in the hero heading before capturing HTML.
     try {
       await page.waitForFunction(
           () => {
@@ -140,66 +156,39 @@ async function fetchWithPage(browser, url) {
           { timeout: 5000 }
       );
     } catch {
-      // Price didn't appear — capture anyway, checkPage will flag it as incomplete
       await new Promise(r => setTimeout(r, 1000));
     }
     const html = await page.content();
     const finalUrl = page.url();
-    return { ok: true, status: response?.status() || 200, finalUrl, html };
+    const payloadBytes = Buffer.byteLength(html, 'utf8');
+    return { ok: true, status: response?.status() || 200, finalUrl, html, payloadBytes };
   } catch (err) {
-    return { ok: false, status: null, error: err.message, html: null };
+    return { ok: false, status: null, error: err.message, html: null, payloadBytes: null };
   } finally {
     await page.close();
   }
 }
 
-// Hero tagline is incomplete if:
-//   - empty
-//   - no price (all good examples include a £ price)
-//   - ends with a dangling preposition ("Explore holidays to", "Holidays in", etc.)
+// ── Content checks ────────────────────────────────────────────────────────────
 function checkHeroText(text) {
   const clean = text.trim().replace(/\s+/g, ' ');
-
-  // "Explore holidays to {Destination}" is a valid complete pattern — not a truncation.
-  // e.g. "Explore holidays to South Africa" with no price is a data issue, not a broken string.
-  // Only flag as incomplete if it ends on a bare preposition with nothing after it.
   const endsOnPrep = /\b(to|in|for|from|of|and|the|a|an)\s*$/i.test(clean);
-
-  // A well-formed tagline should have a price
   const hasPrice = clean.includes('£');
-
-  // "Explore holidays to" exactly (nothing after "to") = definitely broken
   const explorePattern = /^explore holidays to\s*$/i.test(clean);
 
-  if (explorePattern) {
-    return { status: 'incomplete', issue: 'Destination name is missing from tagline' };
-  }
-  if (!hasPrice) {
-    return { status: 'incomplete', issue: 'No price found — tagline may be cut off' };
-  }
-  if (endsOnPrep) {
-    return { status: 'incomplete', issue: `Tagline ends abruptly: "${clean}"` };
-  }
+  if (explorePattern) return { status: 'incomplete', issue: 'Destination name is missing from tagline' };
+  if (!hasPrice) return { status: 'incomplete', issue: 'No price found — tagline may be cut off' };
+  if (endsOnPrep) return { status: 'incomplete', issue: `Tagline ends abruptly: "${clean}"` };
   return { status: 'ok', issue: null };
-}
-
-function isRegionPath(url) {
-  try {
-    const p = new URL(url).pathname;
-    // Region pages are /holidays/{country}/{region} — three segments
-    return /^\/holidays\/[^/]+\/[^/]+/.test(p);
-  } catch { return false; }
 }
 
 function checkPage(url, html) {
   const $ = cheerio.load(html);
   const result = { url, hero: null, heroImage: null, about: null };
 
-  // Hero image — region pages never have a hero image by design, so skip the check
   if (isRegionPath(url)) {
     result.heroImage = { status: 'n/a' };
   } else {
-    // .country-hero--image is present when set, replaced by Vue comment when missing
     const heroImageEl = $('.country-hero--image').first();
     const heroImageSrc = heroImageEl.attr('src') || null;
     result.heroImage = heroImageSrc
@@ -207,7 +196,6 @@ function checkPage(url, html) {
         : { status: 'missing' };
   }
 
-  // Hero tagline
   const heroEl = $('.hero-heading--beta').first();
   if (!heroEl.length) {
     result.hero = { status: 'missing', text: null };
@@ -221,7 +209,6 @@ function checkPage(url, html) {
     }
   }
 
-  // About section — remove the boilerplate "Speak to an Expert" CTA before counting words
   const aboutEl = $('#about').first();
   if (!aboutEl.length) {
     result.about = { status: 'missing', wordCount: 0, text: null };
@@ -236,6 +223,15 @@ function checkPage(url, html) {
 
   return result;
 }
+
+// ── Stored results endpoint ───────────────────────────────────────────────────
+app.get('/api/results', (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'url query param required' });
+  const data = loadResult(url);
+  if (!data) return res.status(404).json({ error: 'No stored result' });
+  res.json(data);
+});
 
 // ── Debug endpoint ────────────────────────────────────────────────────────────
 app.post('/api/debug', async (req, res) => {
@@ -327,7 +323,6 @@ app.post('/api/crawl', async (req, res) => {
     for (const link of navLinks) {
       send({ type: 'progress', message: `Checking: ${link.text}` });
 
-      // Use browser — pages are JS-rendered, axios returns a shell without hero/about
       const resp = await fetchWithPage(browser, link.href);
       const finalUrl = stripTrailingQuery(resp.finalUrl || link.href);
 
@@ -342,6 +337,7 @@ app.post('/api/crawl', async (req, res) => {
         ok: resp.ok,
         error: resp.error || null,
         redirected: !!(resp.finalUrl && stripTrailingQuery(resp.finalUrl) !== link.href),
+        payloadBytes: resp.payloadBytes || null,
         navCheck: null,
         linkType: null,
         hero: null,
@@ -371,11 +367,8 @@ app.post('/api/crawl', async (req, res) => {
         const origParsed = (() => { try { return new URL(link.href); } catch { return null; } })();
         const origPath = origParsed ? origParsed.pathname : null;
         const origWasHoliday = origPath && isHolidayPath(origPath);
-
-        // Only flag wrong_path if:
-        //   - the original link was a holiday path that didn't land on a holiday path, OR
-        //   - it redirected to a homepage (any domain) — clear sign of a broken destination
         const redirectedToHomepage = finalParsed.pathname === '/';
+
         if (origWasHoliday && !onHolidayPath) {
           entry.navCheck = 'wrong_path';
         } else if (redirectedToHomepage) {
@@ -384,7 +377,6 @@ app.post('/api/crawl', async (req, res) => {
           entry.navCheck = 'ok';
         }
 
-        // Run content checks on all holiday pages — both on this site and sister sites
         if ((entry.linkType === 'holiday' || entry.linkType === 'sister-holiday') && resp.html) {
           const pageCheck = checkPage(entry.finalUrl, resp.html);
           entry.heroImage = pageCheck.heroImage;
@@ -397,6 +389,16 @@ app.post('/api/crawl', async (req, res) => {
       send({ type: 'result', result: entry });
     }
 
+    // Compute average payload and flag outliers (> 2× average)
+    const payloads = results.map(r => r.payloadBytes).filter(Boolean);
+    const avgPayload = payloads.length
+        ? Math.round(payloads.reduce((a, b) => a + b, 0) / payloads.length)
+        : 0;
+    results.forEach(r => {
+      if (r.payloadBytes && avgPayload > 0 && r.payloadBytes > avgPayload * 2) r.payloadLarge = true;
+      r.avgPayloadBytes = avgPayload;
+    });
+
     const summary = {
       total: results.length,
       navOk: results.filter(r => r.navCheck === 'ok').length,
@@ -404,7 +406,10 @@ app.post('/api/crawl', async (req, res) => {
       navWrongPath: results.filter(r => r.navCheck === 'wrong_path').length,
       heroIssues: results.filter(r => r.hero && r.hero.status !== 'ok').length,
       aboutIssues: results.filter(r => r.about && r.about.status !== 'ok').length,
+      avgPayloadBytes: avgPayload,
     };
+
+    saveResult(baseUrl, { url: baseUrl, crawledAt: new Date().toISOString(), summary, results });
 
     send({ type: 'done', summary });
 

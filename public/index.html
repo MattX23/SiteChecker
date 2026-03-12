@@ -410,6 +410,47 @@
     .empty-icon { font-size: 32px; margin-bottom: 12px; }
     .empty-title { font-family: 'Instrument Serif', serif; font-size: 20px; color: var(--text); margin-bottom: 6px; }
 
+
+    /* ── Site tabs ── */
+    .site-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 20px;
+      border-bottom: 2px solid var(--border);
+    }
+    .site-tab {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 10px 18px;
+      border: none;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+    .site-tab:hover { color: var(--text); }
+    .site-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .site-tab .tab-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--border-strong);
+      flex-shrink: 0;
+    }
+    .site-tab .tab-dot.has-result { background: var(--ok); }
+    .site-tab .tab-dot.has-issues { background: var(--warn); }
+    .crawled-at {
+      font-size: 11px;
+      font-family: 'DM Mono', monospace;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
   </style>
 </head>
 <body>
@@ -421,17 +462,28 @@
 
 <div class="container">
 
+  <!-- Site tabs -->
+  <div class="site-tabs" id="site-tabs">
+    <button class="site-tab active" id="tab-bluebaytravel" onclick="switchTab('bluebaytravel.co.uk', this)">
+      <span class="tab-dot" id="dot-bluebaytravel"></span>bluebaytravel.co.uk
+    </button>
+    <button class="site-tab" id="tab-tropicalwarehouse" onclick="switchTab('tropicalwarehouse.co.uk', this)">
+      <span class="tab-dot" id="dot-tropicalwarehouse"></span>tropicalwarehouse.co.uk
+    </button>
+    <button class="site-tab" id="tab-caribbeanwarehouse" onclick="switchTab('caribbeanwarehouse.co.uk', this)">
+      <span class="tab-dot" id="dot-caribbeanwarehouse"></span>caribbeanwarehouse.co.uk
+    </button>
+  </div>
+
   <!-- Search -->
   <div class="search-card">
-    <label class="search-label" for="url-input">Enter site URL to audit</label>
-    <p class="search-hint">Checks all nav links in <code>.cd-secondary-nav .nav-ul</code> — validates destination paths, hero taglines, and about section content.</p>
     <div class="search-row">
       <input
               type="text"
               id="url-input"
               class="search-input"
               placeholder="e.g. tropicalwarehouse.co.uk"
-              value=""
+              value="bluebaytravel.co.uk"
               autocomplete="off"
               spellcheck="false"
       />
@@ -439,12 +491,6 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         Run Audit
       </button>
-    </div>
-    <div class="quick-sites">
-      <span style="font-size:12px;color:var(--muted);align-self:center;">Quick:</span>
-      <button class="quick-btn" onclick="setUrl('bluebaytravel.co.uk')">bluebaytravel.co.uk</button>
-      <button class="quick-btn" onclick="setUrl('tropicalwarehouse.co.uk')">tropicalwarehouse.co.uk</button>
-      <button class="quick-btn" onclick="setUrl('caribbeanwarehouse.co.uk')">caribbeanwarehouse.co.uk</button>
     </div>
     <!-- Currently checking indicator -->
     <div class="checking-bar" id="checking-bar">
@@ -482,6 +528,10 @@
       <div class="pill-num warn" id="sum-about">–</div>
       <div class="pill-label">About Issues</div>
     </div>
+    <div class="summary-pill">
+      <div class="pill-num" id="sum-avgpayload" style="font-size:12px">–</div>
+      <div class="pill-label">Avg Page Size</div>
+    </div>
   </div>
 
   <!-- Filters -->
@@ -491,14 +541,18 @@
     <button class="filter-btn" data-filter="nav" onclick="setFilter('nav', this)">Nav problems</button>
     <button class="filter-btn" data-filter="hero" onclick="setFilter('hero', this)">Hero problems</button>
     <button class="filter-btn" data-filter="about" onclick="setFilter('about', this)">About problems</button>
+    <button class="filter-btn" data-filter="payload" onclick="setFilter('payload', this)">Large pages <span id="payload-filter-hint" style="font-weight:400;opacity:0.7;font-size:11px"></span></button>
   </div>
+
+  <!-- Crawled at timestamp -->
+  <div class="crawled-at" id="crawled-at" style="display:none"></div>
 
   <!-- Results -->
   <div id="results">
     <div class="empty-state" id="empty-state">
       <div class="empty-icon">🔍</div>
       <div class="empty-title">Ready to audit</div>
-      <p>Enter a site URL above and click Run Audit.</p>
+      <p>Select a site tab and click Run Audit — or a previous result will load automatically.</p>
     </div>
   </div>
 
@@ -508,10 +562,127 @@
   let allResults = [];
   let currentFilter = 'all';
   let totalLinks = 0;
+  let activeTab = 'bluebaytravel.co.uk';
+  let crawlRunning = false;
+  let crawlingTab = null;
+  // Per-tab progress log state: { html, visible, checkingVisible, checkingName, checkingCount }
+  const tabLogState = {};
 
-  function setUrl(url) {
-    document.getElementById('url-input').value = url;
-    document.getElementById('url-input').focus();
+  const SITES = ['bluebaytravel.co.uk', 'tropicalwarehouse.co.uk', 'caribbeanwarehouse.co.uk'];
+
+  function formatBytes(b) {
+    if (!b) return '—';
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  function switchTab(site, btn) {
+    if (crawlRunning && crawlingTab !== site) return; // block switching away mid-crawl
+
+    // Save outgoing tab's log state
+    tabLogState[activeTab] = {
+      logHtml: document.getElementById('log-lines').innerHTML,
+      logVisible: document.getElementById('status-log').classList.contains('visible'),
+      checkingVisible: document.getElementById('checking-bar').classList.contains('visible'),
+      checkingName: document.getElementById('checking-name').textContent,
+      checkingCount: document.getElementById('checking-count').textContent,
+    };
+
+    activeTab = site;
+    document.querySelectorAll('.site-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('url-input').value = site;
+    // Restore incoming tab's log state
+    const saved = tabLogState[site];
+    if (saved) {
+      document.getElementById('log-lines').innerHTML = saved.logHtml;
+      document.getElementById('status-log').classList.toggle('visible', saved.logVisible);
+      document.getElementById('checking-bar').classList.toggle('visible', saved.checkingVisible);
+      document.getElementById('checking-name').textContent = saved.checkingName;
+      document.getElementById('checking-count').textContent = saved.checkingCount;
+    } else {
+      // No saved state for this tab — clear the log
+      document.getElementById('log-lines').innerHTML = '';
+      document.getElementById('status-log').classList.remove('visible');
+      document.getElementById('checking-bar').classList.remove('visible');
+    }
+
+    if (!crawlRunning) loadStored(site);
+  }
+
+  async function loadStored(site) {
+    try {
+      const resp = await fetch(`/api/results?url=https://${site}`);
+      if (!resp.ok) {
+        showEmpty();
+        return;
+      }
+      const data = await resp.json();
+      renderStoredResult(data);
+    } catch {
+      showEmpty();
+    }
+  }
+
+  function showEmpty() {
+    allResults = [];
+    document.getElementById('results').innerHTML = `
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-title">No audit yet</div>
+        <p>Click Run Audit to check this site.</p>
+      </div>`;
+    document.getElementById('summary-bar').classList.remove('visible');
+    document.getElementById('filter-bar').classList.remove('visible');
+    document.getElementById('crawled-at').style.display = 'none';
+  }
+
+  function setSummary(s) {
+    document.getElementById('sum-ok').textContent = s.navOk;
+    document.getElementById('sum-dead').textContent = s.navDead;
+    document.getElementById('sum-wrongpath').textContent = s.navWrongPath;
+    document.getElementById('sum-hero').textContent = s.heroIssues;
+    document.getElementById('sum-about').textContent = s.aboutIssues;
+    if (s.avgPayloadBytes) {
+      document.getElementById('sum-avgpayload').textContent = formatBytes(s.avgPayloadBytes);
+      const hint = document.getElementById('payload-filter-hint');
+      if (hint) hint.textContent = `(>2× avg · avg ${formatBytes(s.avgPayloadBytes)})`;
+    } else {
+      document.getElementById('sum-avgpayload').textContent = '–';
+      const hint = document.getElementById('payload-filter-hint');
+      if (hint) hint.textContent = '';
+    }
+  }
+
+  function renderStoredResult(data) {
+    allResults = data.results || [];
+    document.getElementById('results').innerHTML = '';
+    allResults.forEach((r, i) => {
+      const div = document.createElement('div');
+      div.innerHTML = renderCard(r, i);
+      document.getElementById('results').appendChild(div.firstElementChild);
+      if (hasIssues(r)) document.getElementById(`card-${i}`).classList.add('expanded');
+    });
+    const s = data.summary;
+    setSummary(s);
+    document.getElementById('summary-bar').classList.add('visible');
+    document.getElementById('filter-bar').classList.add('visible');
+    const ts = document.getElementById('crawled-at');
+    if (data.crawledAt) {
+      ts.textContent = `Last audited: ${new Date(data.crawledAt).toLocaleString()}`;
+      ts.style.display = 'block';
+    }
+    applyFilter();
+    updateTabDot(data.url, s);
+  }
+
+  function updateTabDot(url, summary) {
+    const key = url.replace(/https?:\/\//, '').replace(/\/$/, '').split('.')[0];
+    const dot = document.getElementById(`dot-${key}`);
+    if (!dot) return;
+    const hasIssuesInSummary = (summary.navDead + summary.navWrongPath + summary.heroIssues + summary.aboutIssues) > 0;
+    dot.className = 'tab-dot ' + (hasIssuesInSummary ? 'has-issues' : 'has-result');
   }
 
   function hasIssues(r) {
@@ -564,11 +735,17 @@
     return '';
   }
 
+  function payloadBadge(r) {
+    if (!r.payloadBytes) return '';
+    if (r.payloadLarge) return `<span class="badge badge-warn">large ${formatBytes(r.payloadBytes)}</span>`;
+    return '';
+  }
+
   function renderCard(r, index) {
     const cc = cardClass(r);
     const dc = dotClass(r);
     return `
-      <div class="result-card ${cc}" id="card-${index}" data-issues="${hasIssues(r)}" data-nav="${r.navCheck !== 'ok'}" data-hero="${r.hero && r.hero.status !== 'ok'}" data-about="${r.about && r.about.status !== 'ok'}">
+      <div class="result-card ${cc}" id="card-${index}" data-issues="${hasIssues(r)}" data-nav="${r.navCheck !== 'ok'}" data-hero="${r.hero && r.hero.status !== 'ok'}" data-about="${r.about && r.about.status !== 'ok'}" data-payload="${!!r.payloadLarge}">
         <div class="result-header" onclick="toggleCard(${index})">
           <div class="status-dot ${dc}"></div>
           <div class="result-name"><a class="card-anchor" href="#card-${index}">${r.linkText || r.originalHref}</a></div>
@@ -577,6 +754,7 @@
             ${heroImageBadge(r)}
             ${heroBadge(r)}
             ${aboutBadge(r)}
+            ${payloadBadge(r)}
           </div>
           <div class="expand-icon">▾</div>
         </div>
@@ -617,6 +795,16 @@
               </div>
               ${r.about.text ? `<div class="detail-excerpt">"${r.about.text.slice(0, 140)}${r.about.text.length > 140 ? '…' : ''}"</div>` : ''}
             </div>` : ''}
+            ${r.payloadBytes ? `
+            <div class="detail-item">
+              <div class="detail-label">Page payload</div>
+              <div class="detail-value ${r.payloadLarge ? 'warn' : 'ok'}">${formatBytes(r.payloadBytes)}${r.avgPayloadBytes ? ` <span style="font-weight:400;color:var(--muted)">(avg ${formatBytes(r.avgPayloadBytes)})</span>` : ''}</div>
+            </div>` : ''}
+            ${r.redirectChain && r.redirectChain.length > 0 ? `
+            <div class="detail-item">
+              <div class="detail-label">Redirect chain</div>
+              <div class="detail-value mono warn">${r.redirectChain.map(rc => `${rc.status} → ${rc.url}`).join('<br>')}</div>
+            </div>` : ''}
           </div>
         </div>
       </div>`;
@@ -646,6 +834,7 @@
       else if (currentFilter === 'nav') show = card.dataset.nav === 'true';
       else if (currentFilter === 'hero') show = card.dataset.hero === 'true';
       else if (currentFilter === 'about') show = card.dataset.about === 'true';
+      else if (currentFilter === 'payload') show = card.dataset.payload === 'true';
       card.style.display = show ? '' : 'none';
     });
   }
@@ -679,8 +868,19 @@
   }
 
   async function startCrawl() {
+    if (crawlRunning) return;
     const url = document.getElementById('url-input').value.trim();
     if (!url) return;
+
+    crawlRunning = true;
+    crawlingTab = activeTab;
+    // Dim and disable other tabs while crawl is running
+    document.querySelectorAll('.site-tab').forEach(t => {
+      if (t.id !== `tab-${activeTab.split('.')[0]}`) {
+        t.style.opacity = '0.4';
+        t.style.pointerEvents = 'none';
+      }
+    });
 
     // Reset
     allResults = [];
@@ -697,7 +897,7 @@
 
     totalLinks = 0;
     document.getElementById('checking-bar').classList.remove('visible');
-    addLog(`Connecting to ${url}`);
+    addLog(`Auditing ${activeTab}…`);
 
     const resp = await fetch('/api/crawl', {
       method: 'POST',
@@ -749,6 +949,13 @@
           linkLogToCard(index, r);
         } else if (event.type === 'error') {
           addLog('Error: ' + event.message, true);
+          crawlRunning = false;
+          crawlingTab = null;
+          document.querySelectorAll('.site-tab').forEach(t => {
+            t.style.opacity = '';
+            t.style.pointerEvents = '';
+          });
+          document.getElementById('run-btn').disabled = false;
         } else if (event.type === 'done') {
           document.getElementById('checking-bar').classList.remove('visible');
           // Finalise log
@@ -758,25 +965,55 @@
           }
           // Summary
           const s = event.summary;
-          document.getElementById('sum-ok').textContent = s.navOk;
-          document.getElementById('sum-dead').textContent = s.navDead;
-          document.getElementById('sum-wrongpath').textContent = s.navWrongPath;
-          document.getElementById('sum-hero').textContent = s.heroIssues;
-          document.getElementById('sum-about').textContent = s.aboutIssues;
+          setSummary(s);
           document.getElementById('summary-bar').classList.add('visible');
           document.getElementById('filter-bar').classList.add('visible');
           document.getElementById('run-btn').disabled = false;
           addLog(`Complete — ${s.total} links checked`, true);
+          // Show timestamp and update tab dot
+          const ts = document.getElementById('crawled-at');
+          ts.textContent = `Last audited: ${new Date().toLocaleString()}`;
+          ts.style.display = 'block';
+          updateTabDot(`https://${activeTab}`, s);
+          // Re-enable tabs
+          crawlRunning = false;
+          crawlingTab = null;
+          document.querySelectorAll('.site-tab').forEach(t => {
+            t.style.opacity = '';
+            t.style.pointerEvents = '';
+          });
         }
       }
     }
 
+    crawlRunning = false;
+    crawlingTab = null;
+    document.querySelectorAll('.site-tab').forEach(t => {
+      t.style.opacity = '';
+      t.style.pointerEvents = '';
+    });
     document.getElementById('run-btn').disabled = false;
   }
 
   // Enter key
   document.getElementById('url-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') startCrawl();
+  });
+
+  // On load — fetch stored results for all tabs then show the first
+  window.addEventListener('DOMContentLoaded', async () => {
+    // Pre-fetch all tabs to set dots
+    for (const site of SITES) {
+      try {
+        const resp = await fetch(`/api/results?url=https://${site}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          updateTabDot(data.url, data.summary);
+        }
+      } catch {}
+    }
+    // Load the active tab
+    loadStored(activeTab);
   });
 </script>
 </body>
