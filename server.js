@@ -183,16 +183,29 @@ function checkHeroText(text) {
   return { status: 'ok', issue: null };
 }
 
+function isRegionPath(url) {
+  try {
+    const p = new URL(url).pathname;
+    // Region pages are /holidays/{country}/{region} — three segments
+    return /^\/holidays\/[^/]+\/[^/]+/.test(p);
+  } catch { return false; }
+}
+
 function checkPage(url, html) {
   const $ = cheerio.load(html);
   const result = { url, hero: null, heroImage: null, about: null };
 
-  // Hero image — .country-hero--image is present when set, replaced by Vue comment when missing
-  const heroImageEl = $('.country-hero--image').first();
-  const heroImageSrc = heroImageEl.attr('src') || null;
-  result.heroImage = heroImageSrc
-      ? { status: 'ok', src: heroImageSrc }
-      : { status: 'missing' };
+  // Hero image — region pages never have a hero image by design, so skip the check
+  if (isRegionPath(url)) {
+    result.heroImage = { status: 'n/a' };
+  } else {
+    // .country-hero--image is present when set, replaced by Vue comment when missing
+    const heroImageEl = $('.country-hero--image').first();
+    const heroImageSrc = heroImageEl.attr('src') || null;
+    result.heroImage = heroImageSrc
+        ? { status: 'ok', src: heroImageSrc }
+        : { status: 'missing' };
+  }
 
   // Hero tagline
   const heroEl = $('.hero-heading--beta').first();

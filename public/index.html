@@ -516,7 +516,7 @@
 
   function hasIssues(r) {
     return r.navCheck !== 'ok' ||
-            (r.heroImage && r.heroImage.status !== 'ok') ||
+            (r.heroImage && r.heroImage.status !== 'ok' && r.heroImage.status !== 'n/a') ||
             (r.hero && r.hero.status !== 'ok') ||
             (r.about && r.about.status !== 'ok');
   }
@@ -543,6 +543,7 @@
   function heroImageBadge(r) {
     if (!r.heroImage) return '';
     if (r.heroImage.status === 'ok') return `<span class="badge badge-ok">image ✓</span>`;
+    if (r.heroImage.status === 'n/a') return '';
     return `<span class="badge badge-error">image missing</span>`;
   }
 
@@ -599,7 +600,7 @@
             ${r.heroImage ? `
             <div class="detail-item">
               <div class="detail-label">Hero image</div>
-              <div class="detail-value ${r.heroImage.status === 'ok' ? 'ok' : 'error'}">${r.heroImage.status === 'ok' ? 'Present' : 'Missing'}</div>
+              <div class="detail-value ${r.heroImage.status === 'ok' ? 'ok' : r.heroImage.status === 'n/a' ? '' : 'error'}">${r.heroImage.status === 'ok' ? 'Present' : r.heroImage.status === 'n/a' ? 'N/A — region pages have no hero image' : 'Missing'}</div>
               ${r.heroImage.src ? `<div class="detail-excerpt">${r.heroImage.src.split('/').pop()}</div>` : ''}
             </div>` : ''}
             ${r.hero ? `
