@@ -22,7 +22,7 @@ For every link found in the site's navigation:
 |---|---|---|---|
 | **Nav link** | Lands on a valid `/holidays/` path | Redirected to unexpected path | Dead link (4xx/5xx) or redirected to homepage |
 | **Hero image** | `.country-hero--image` present | — | Element missing (country pages only; region pages are exempt) |
-| **Hero tagline** | Present with destination name and price | No price / ends abruptly | Element missing or empty |
+| **Hero tagline** | Present, ends on a real word | Ends on a preposition / bare boilerplate / duplicate `££` symbol | Element missing or empty |
 | **About section** | 100+ words (excl. boilerplate) | Under 100 words | Section missing |
 | **Page size** | Within 2× average payload | — | Exceeds 2× average payload |
 
@@ -125,3 +125,5 @@ sitechecker/
 - Sister-site links (e.g. Tropical Warehouse links appearing in Caribbean Warehouse's nav) are fully checked for content, not just liveness.
 - `/brands/`, `/collections/`, `/blog/` and other non-holiday links are checked for liveness only — no content checks are run on them.
 - Region pages (`/holidays/{country}/{region}`) are exempt from the hero image check — they don't have one by design.
+- The hero tagline check does not require a price — "Explore holidays to Malta" is valid. It only flags taglines that end on a dangling preposition (e.g. "Explore holidays to Malta from"), are bare boilerplate with no destination, or contain a duplicate `££` symbol indicating a template rendering error.
+- Large page flags are computed after all pages are checked (the average can only be known at the end) and are patched into already-rendered cards via a follow-up SSE event.
