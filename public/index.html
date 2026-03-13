@@ -544,6 +544,15 @@
     <button class="filter-btn" data-filter="payload" onclick="setFilter('payload', this)">Large pages <span id="payload-filter-hint" style="font-weight:400;opacity:0.7;font-size:11px"></span></button>
   </div>
 
+  <!-- Download report row -->
+  <div id="send-row" style="display:none;align-items:center;gap:12px;margin-bottom:16px">
+    <button class="btn btn-secondary" id="download-btn" onclick="downloadReport()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download Report
+    </button>
+    <span style="font-size:12px;color:var(--muted)">Opens as HTML — use browser Print → Save as PDF to share</span>
+  </div>
+
   <!-- Crawled at timestamp -->
   <div class="crawled-at" id="crawled-at" style="display:none"></div>
 
@@ -636,6 +645,7 @@
     document.getElementById('summary-bar').classList.remove('visible');
     document.getElementById('filter-bar').classList.remove('visible');
     document.getElementById('crawled-at').style.display = 'none';
+    document.getElementById('send-row').style.display = 'none';
   }
 
   function setSummary(s) {
@@ -653,6 +663,7 @@
       const hint = document.getElementById('payload-filter-hint');
       if (hint) hint.textContent = '';
     }
+    document.getElementById('send-row').style.display = 'flex';
   }
 
   function renderStoredResult(data) {
@@ -993,6 +1004,10 @@
       t.style.pointerEvents = '';
     });
     document.getElementById('run-btn').disabled = false;
+  }
+
+  function downloadReport() {
+    window.location.href = `/api/download-report?url=https://${activeTab}`;
   }
 
   // Enter key

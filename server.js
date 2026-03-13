@@ -421,6 +421,167 @@ app.post('/api/crawl', async (req, res) => {
   }
 });
 
+// ── Email/report HTML builder ─────────────────────────────────────────────────
+function buildEmailHtml(data) {
+  const s = data.summary;
+  const site = new URL(data.url).hostname;
+  const date = new Date(data.crawledAt).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const issueCount = s.navDead + s.navWrongPath + s.heroIssues + s.aboutIssues;
+
+  const issuePages = (data.results || []).filter(r =>
+      r.navCheck !== 'ok' ||
+      (r.heroImage && r.heroImage.status !== 'ok' && r.heroImage.status !== 'n/a') ||
+      (r.hero && r.hero.status !== 'ok') ||
+      (r.about && r.about.status !== 'ok')
+  );
+
+  const largePages = (data.results || []).filter(r => r.payloadLarge);
+
+  const formatBytes = (b) => {
+    if (!b) return '—';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(2) + ' MB';
+  };
+
+  const pill = (val, colour, label) => `
+    <td style="text-align:center;padding:0 16px">
+      <div style="font-size:24px;font-weight:600;color:${colour}">${val}</div>
+      <div style="font-size:11px;color:#888;margin-top:2px;white-space:nowrap">${label}</div>
+    </td>`;
+
+  const tag = (text, colour, bg) =>
+      `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;color:${colour};background:${bg};margin:2px 2px 2px 0">${text}</span>`;
+
+  const detailRow = (label, value, valueStyle = '') =>
+      `<tr>
+      <td style="font-size:11px;color:#888;padding:3px 0;width:120px;vertical-align:top">${label}</td>
+      <td style="font-size:12px;color:#444;padding:3px 0;${valueStyle}">${value}</td>
+    </tr>`;
+
+  const issueRows = issuePages.map(r => {
+    const tags = [];
+    if (r.navCheck === 'dead') tags.push(tag('Dead link', '#b93030', '#fdf1f1'));
+    if (r.navCheck === 'wrong_path') tags.push(tag('Wrong destination', '#a05c00', '#fef6ec'));
+    if (r.heroImage && r.heroImage.status === 'missing') tags.push(tag('Hero image missing', '#b93030', '#fdf1f1'));
+    if (r.hero && r.hero.status === 'missing') tags.push(tag('Hero tagline missing', '#b93030', '#fdf1f1'));
+    if (r.hero && r.hero.status === 'incomplete') tags.push(tag('Hero tagline incomplete', '#a05c00', '#fef6ec'));
+    if (r.about && r.about.status === 'missing') tags.push(tag('About section missing', '#b93030', '#fdf1f1'));
+    if (r.about && r.about.status === 'short') tags.push(tag(`About too short (${r.about.wordCount}w)`, '#a05c00', '#fef6ec'));
+
+    const details = [];
+    details.push(detailRow('URL', `<a href="${r.originalHref}" style="color:#2a6496">${r.originalHref}</a>`));
+    if (r.redirected && r.finalUrl !== r.originalHref) {
+      details.push(detailRow('Landed on', `<a href="${r.finalUrl}" style="color:#a05c00">${r.finalUrl}</a>`));
+    }
+    if (r.hero && r.hero.issue) {
+      details.push(detailRow('Hero issue', r.hero.issue));
+    }
+    if (r.hero && r.hero.text) {
+      details.push(detailRow('Hero text', `"${r.hero.text.slice(0, 100)}${r.hero.text.length > 100 ? '…' : ''}"`, 'font-style:italic;color:#666'));
+    }
+    if (r.about && r.about.status === 'short') {
+      details.push(detailRow('About', `${r.about.wordCount} words (min 100)${r.about.text ? ` — "${r.about.text.slice(0, 80)}…"` : ''}`));
+    }
+
+    return `
+      <tr>
+        <td style="padding:16px 0;border-bottom:1px solid #eee;vertical-align:top">
+          <div style="font-weight:600;color:#1a1916;margin-bottom:8px">${r.linkText || r.originalHref}</div>
+          <div style="margin-bottom:10px">${tags.join('')}</div>
+          <table cellpadding="0" cellspacing="0" style="width:100%">${details.join('')}</table>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const largePageRows = largePages.map(r => `
+    <tr>
+      <td style="padding:12px 0;border-bottom:1px solid #eee;vertical-align:top">
+        <div style="font-weight:600;color:#1a1916;margin-bottom:4px">
+          <a href="${r.originalHref}" style="color:#2a6496;text-decoration:none">${r.linkText || r.originalHref}</a>
+        </div>
+        <div style="font-size:12px;color:#a05c00">${formatBytes(r.payloadBytes)} &nbsp;·&nbsp; avg ${formatBytes(r.avgPayloadBytes)}</div>
+      </td>
+    </tr>`).join('');
+
+  const noIssuesBlock = issuePages.length === 0
+      ? `<p style="color:#2d7a4f;font-weight:500;font-size:15px">✓ No issues found — all pages are healthy.</p>`
+      : '';
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Site Checker — ${site}</title></head>
+<body style="margin:0;padding:0;background:#f7f6f3;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f7f6f3;padding:40px 0">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.07)">
+        <tr>
+          <td style="background:#1a1916;padding:24px 32px">
+            <span style="font-size:20px;color:#fff;font-weight:600">Site<span style="color:#7ab3d4;font-style:italic">Checker</span></span>
+            <span style="font-size:12px;color:#aaa;margin-left:12px">${site}</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 32px 0">
+            <div style="font-size:12px;color:#888;margin-bottom:6px">${date}</div>
+            <h1 style="margin:0;font-size:22px;font-weight:600;color:#1a1916">
+              ${issueCount === 0 ? 'All clear' : `${issueCount} issue${issueCount !== 1 ? 's' : ''} found`}
+            </h1>
+            <div style="font-size:13px;color:#666;margin-top:6px">Audit report for <strong>${site}</strong></div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:24px 32px">
+            <table cellpadding="0" cellspacing="0"><tr>
+              ${pill(s.navOk, '#2d7a4f', 'Nav OK')}
+              ${pill(s.navDead, '#b93030', 'Dead Links')}
+              ${pill(s.navWrongPath, '#a05c00', 'Wrong Destination')}
+              ${pill(s.heroIssues, '#a05c00', 'Hero Issues')}
+              ${pill(s.aboutIssues, '#a05c00', 'About Issues')}
+            </tr></table>
+          </td>
+        </tr>
+        <tr><td style="padding:0 32px"><hr style="border:none;border-top:1px solid #eee;margin:0"></td></tr>
+        <tr>
+          <td style="padding:24px 32px">
+            ${noIssuesBlock}
+            ${issuePages.length > 0 ? `
+            <h2 style="margin:0 0 16px;font-size:14px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.06em">Pages with issues</h2>
+            <table width="100%" cellpadding="0" cellspacing="0">${issueRows}</table>` : ''}
+            ${largePages.length > 0 ? `
+            <h2 style="margin:${issuePages.length > 0 ? '32px' : '0'} 0 16px;font-size:14px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.06em">Large pages</h2>
+            <p style="font-size:12px;color:#888;margin:0 0 12px">Pages exceeding 2× the average payload of ${formatBytes(s.avgPayloadBytes)}.</p>
+            <table width="100%" cellpadding="0" cellspacing="0">${largePageRows}</table>` : ''}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 32px;background:#f7f6f3;border-top:1px solid #eee">
+            <div style="font-size:11px;color:#aaa">Generated by SiteChecker · ${data.summary.total} pages checked · ${date}</div>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+// ── Download report endpoint ─────────────────────────────────────────────────
+app.get('/api/download-report', (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).send('url query param required');
+
+  const data = loadResult(url);
+  if (!data) return res.status(404).send('No stored result for this site — run an audit first');
+
+  const site = new URL(data.url).hostname;
+  const date = new Date(data.crawledAt).toISOString().slice(0, 10);
+  const filename = `sitechecker-${site}-${date}.html`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buildEmailHtml(data));
+});
+
 const PORT = 3333;
 app.listen(PORT, () => {
   console.log(`\n✅ Site Checker running at http://localhost:${PORT}\n`);
