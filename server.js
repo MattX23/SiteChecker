@@ -172,13 +172,21 @@ async function fetchWithPage(browser, url) {
 // ── Content checks ────────────────────────────────────────────────────────────
 function checkHeroText(text) {
   const clean = text.trim().replace(/\s+/g, ' ');
-  const endsOnPrep = /\b(to|in|for|from|of|and|the|a|an)\s*$/i.test(clean);
-  const hasPrice = clean.includes('£');
-  const explorePattern = /^explore holidays to\s*$/i.test(clean);
 
-  if (explorePattern) return { status: 'incomplete', issue: 'Destination name is missing from tagline' };
-  if (!hasPrice) return { status: 'incomplete', issue: 'No price found — tagline may be cut off' };
+  // Ends on a preposition or article — something was definitely cut off
+  // e.g. "Explore holidays to Malta from" or "Explore holidays to"
+  const endsOnPrep = /\b(to|in|for|from|of|and|the|a|an)\s*$/i.test(clean);
+
+  // Completely bare — just the boilerplate with nothing meaningful after it
+  const bareBoilerplate = /^(explore holidays to|holidays (to|in)|book holidays (to|in))\s*$/i.test(clean);
+
+  if (bareBoilerplate) return { status: 'incomplete', issue: 'Destination name is missing from tagline' };
   if (endsOnPrep) return { status: 'incomplete', issue: `Tagline ends abruptly: "${clean}"` };
+  if (clean.includes('££')) return { status: 'incomplete', issue: `Duplicate price symbol — template rendered twice: "${clean}"` };
+
+  // Ends on a real word — treat as ok even without a price.
+  // The price is loaded dynamically and may not always hydrate in time.
+  // "Explore holidays to Malta" is a valid complete tagline without a price.
   return { status: 'ok', issue: null };
 }
 
@@ -394,9 +402,13 @@ app.post('/api/crawl', async (req, res) => {
     const avgPayload = payloads.length
         ? Math.round(payloads.reduce((a, b) => a + b, 0) / payloads.length)
         : 0;
-    results.forEach(r => {
-      if (r.payloadBytes && avgPayload > 0 && r.payloadBytes > avgPayload * 2) r.payloadLarge = true;
+    results.forEach((r, i) => {
+      r.payloadLarge = !!(r.payloadBytes && avgPayload > 0 && r.payloadBytes > avgPayload * 2);
       r.avgPayloadBytes = avgPayload;
+      // Notify frontend so it can update the already-rendered card
+      if (r.payloadLarge) {
+        send({ type: 'payload-update', index: i, payloadBytes: r.payloadBytes, avgPayloadBytes: avgPayload });
+      }
     });
 
     const summary = {
@@ -465,6 +477,7 @@ function buildEmailHtml(data) {
     if (r.heroImage && r.heroImage.status === 'missing') tags.push(tag('Hero image missing', '#b93030', '#fdf1f1'));
     if (r.hero && r.hero.status === 'missing') tags.push(tag('Hero tagline missing', '#b93030', '#fdf1f1'));
     if (r.hero && r.hero.status === 'incomplete') tags.push(tag('Hero tagline incomplete', '#a05c00', '#fef6ec'));
+    if (r.hero && r.hero.issue && r.hero.issue.includes('Duplicate price')) tags.push(tag('Double ££ symbol', '#b93030', '#fdf1f1'));
     if (r.about && r.about.status === 'missing') tags.push(tag('About section missing', '#b93030', '#fdf1f1'));
     if (r.about && r.about.status === 'short') tags.push(tag(`About too short (${r.about.wordCount}w)`, '#a05c00', '#fef6ec'));
 

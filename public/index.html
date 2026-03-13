@@ -958,6 +958,27 @@
           applyFilter();
           // Make the log entry a clickable link to this card
           linkLogToCard(index, r);
+        } else if (event.type === 'payload-update') {
+          // Patch the already-rendered card with large page badge
+          const r = allResults[event.index];
+          if (r) {
+            r.payloadLarge = true;
+            r.avgPayloadBytes = event.avgPayloadBytes;
+            r.payloadBytes = event.payloadBytes;
+            const card = document.getElementById(`card-${event.index}`);
+            if (card) {
+              // Add data-payload flag for filter
+              card.dataset.payload = 'true';
+              // Add large badge to badges row if not already there
+              const badgesEl = card.querySelector('.result-badges');
+              if (badgesEl && !badgesEl.querySelector('.badge-payload-large')) {
+                const badge = document.createElement('span');
+                badge.className = 'badge badge-warn badge-payload-large';
+                badge.textContent = `large ${formatBytes(event.payloadBytes)}`;
+                badgesEl.appendChild(badge);
+              }
+            }
+          }
         } else if (event.type === 'error') {
           addLog('Error: ' + event.message, true);
           crawlRunning = false;
